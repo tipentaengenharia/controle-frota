@@ -1256,14 +1256,14 @@ function CadastroMotoristasCarrosPage({ scriptUrl }) {
           ))}
         </div>
         <div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
-          <input value={novaPlaca} onChange={e=>setNovaPlaca(e.target.value)}
-            onKeyDown={e=>e.key==='Enter'&&addCarro()}
-            placeholder="Placa (ex: ABC1D23)"
-            style={{...inputStyle, width:'140px', flex:'none'}} />
           <input value={novoModelo} onChange={e=>setNovoModelo(e.target.value)}
             onKeyDown={e=>e.key==='Enter'&&addCarro()}
             placeholder="Modelo (ex: Mobi)"
             style={inputStyle} />
+          <input value={novaPlaca} onChange={e=>setNovaPlaca(e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&addCarro()}
+            placeholder="Placa (ex: ABC1D23)"
+            style={{...inputStyle, width:'140px', flex:'none'}} />
           <button onClick={addCarro} style={btnAddStyle}>+ Adicionar</button>
         </div>
         <div style={{fontSize:'12px',color:'#9ca3af',marginTop:'8px'}}>Informe placa e modelo. Para remover, clique no ✕.</div>
