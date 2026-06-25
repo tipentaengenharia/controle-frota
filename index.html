@@ -235,7 +235,13 @@
   td.kml-bad  { color:#dc2626; font-weight:700; }
   td.kml-none { color:#94a3b8; }
   .total-row td { background:#f8fafc; font-weight:700; border-top:2px solid #e2e8f0; }
-</style>
+  @media print {
+    .sidebar, .topbar, .table-toolbar, .relatorio-presets, .period-picker, .hamburger { display: none !important; }
+    body { background: white !important; }
+    .main-content { margin-left: 0 !important; padding: 8px !important; }
+    .summary-table-wrap { box-shadow: none !important; border: 1px solid #e2e8f0 !important; page-break-inside: avoid; }
+  }
+  </style>
 </head>
 <body>
 <div id="root"></div>
@@ -524,6 +530,15 @@ function RecordModal({ record, onSave, onClose, saving }) {
 }
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
+const VTR_PALETTE = ['#3b82f6','#ec4899','#22c55e','#f59e0b','#8b5cf6','#f97316','#06b6d4','#84cc16'];
+const VTR_PALETTE_BG = ['#dbeafe','#fce7f3','#dcfce7','#fef3c7','#ede9fe','#ffedd5','#cffafe','#ecfccb'];
+const VTR_PALETTE_TEXT = ['#1d4ed8','#be185d','#15803d','#b45309','#6d28d9','#c2410c','#0e7490','#3f6212'];
+const vtrBadgeStyle = (vtr) => {
+  const i = CARROS.indexOf(vtr);
+  const idx = i >= 0 ? i % VTR_PALETTE.length : 0;
+  return {background: VTR_PALETTE_BG[idx], color: VTR_PALETTE_TEXT[idx]};
+};
+
 function Dashboard({ records }) {
   const totalKm = records.reduce((s, r) => s + (r.km_dia || 0), 0);
   const totalAbast = records.filter(r => r.abasteceu === 'SIM').reduce((s, r) => s + (r.valor_abast || 0), 0);
@@ -537,8 +552,8 @@ function Dashboard({ records }) {
     datasets: CARROS.map((vtr, i) => ({
       label: VTR_NAMES[vtr],
       data: meses.map(m => records.filter(r => r.vtr === vtr && r.mes === m).reduce((s, r) => s + (r.km_dia || 0), 0)),
-      backgroundColor: i === 0 ? '#3b82f680' : '#29ABE280',
-      borderColor: i === 0 ? '#3b82f6' : '#29ABE2',
+      backgroundColor: VTR_PALETTE[i % VTR_PALETTE.length] + '80',
+      borderColor: VTR_PALETTE[i % VTR_PALETTE.length],
       borderWidth: 2,
     }))
   };
@@ -548,8 +563,8 @@ function Dashboard({ records }) {
     datasets: CARROS.map((vtr, i) => ({
       label: VTR_NAMES[vtr],
       data: meses.map(m => records.filter(r => r.vtr === vtr && r.mes === m && r.abasteceu === 'SIM').reduce((s, r) => s + (r.valor_abast || 0), 0)),
-      borderColor: i === 0 ? '#3b82f6' : '#29ABE2',
-      backgroundColor: i === 0 ? '#3b82f620' : '#29ABE220',
+      borderColor: VTR_PALETTE[i % VTR_PALETTE.length],
+      backgroundColor: VTR_PALETTE[i % VTR_PALETTE.length] + '20',
       borderWidth: 2, fill: true,
     }))
   };
@@ -594,8 +609,8 @@ function Dashboard({ records }) {
         {vtrStats.map(s => (
           <div className="vtr-card" key={s.vtr}>
             <div className="vtr-card-header">
-              <span className={`vtr-badge ${s.vtr === 'TRZ4A58' ? 'mobi' : 'montana'}`}>{s.vtr}</span>
-              <div className="vtr-card-title">{s.vtr === 'TRZ4A58' ? 'Mobi' : 'Montana'}</div>
+              <span className="vtr-badge" style={vtrBadgeStyle(s.vtr)}>{s.vtr}</span>
+              <div className="vtr-card-title">{VEICULOS_LIST.find(v=>v.placa===s.vtr)?.nome || s.vtr}</div>
             </div>
             <div className="vtr-stats">
               <div className="vtr-stat"><div className="vtr-stat-val">{s.km.toLocaleString('pt-BR')}</div><div className="vtr-stat-lbl">KM Rodados</div></div>
@@ -633,8 +648,8 @@ function Dashboard({ records }) {
         const hasTipo = abastRecs.some(r => r.tipo === 'gasolina' || r.tipo === 'alcool' || r.tipo === 'álcool' || r.tipo === 'etanol');
 
         let precoLabels, precoDatasets;
-        if (hasTipo) {
-          const gasolinaRecs = abastRecs.filter(r => r.tipo === 'gasolina');
+        if (true) {
+          const gasolinaRecs = abastRecs.filter(r => !r.tipo || r.tipo === 'gasolina');
           const alcoolRecs   = abastRecs.filter(r => r.tipo === 'alcool' || r.tipo === 'álcool' || r.tipo === 'etanol');
           const allDates = [...new Set(abastRecs.map(r => r.data))];
           precoLabels = allDates;
@@ -687,6 +702,8 @@ function RecordsTable({ records, scriptUrl, onRefresh, showToast }) {
   const [editRecord, setEditRecord] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [deletingBulk, setDeletingBulk] = useState(false);
 
   const filtered = useMemo(() => {
     const list = records.filter(r =>
@@ -743,6 +760,35 @@ function RecordsTable({ records, scriptUrl, onRefresh, showToast }) {
       showToast('❌ Erro: ' + e.message, 'error');
     }
     setSaving(false);
+  };
+
+  const handleDeleteBulk = async () => {
+    if (selectedIds.size === 0) return;
+    const idsToDelete = [...selectedIds];
+    setDeletingBulk(true);
+    let errors = 0;
+    for (const id of idsToDelete) {
+      try { await apiPost(scriptUrl, { action: 'delete', id }); }
+      catch(e) { errors++; }
+    }
+    setSelectedIds(new Set());
+    setDeletingBulk(false);
+    if (errors === 0) showToast(`✅ ${idsToDelete.length} registro(s) removido(s)!`, 'success');
+    else showToast(`⚠️ ${errors} erro(s) ao remover`, 'error');
+    await onRefresh();
+  };
+
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === paged.length && paged.length > 0) setSelectedIds(new Set());
+    else setSelectedIds(new Set(paged.map(r => r.id)));
   };
 
   return (
@@ -802,7 +848,11 @@ function RecordsTable({ records, scriptUrl, onRefresh, showToast }) {
         <table>
           <thead>
             <tr>
-              <th>#</th><th>Data</th><th>VTR</th><th>Motorista</th>
+              <th style={{width:'32px',textAlign:'center',padding:'8px 4px'}}>
+                  <input type="checkbox" checked={paged.length > 0 && selectedIds.size === paged.length}
+                    onChange={toggleSelectAll} />
+                </th>
+                <th>#</th><th>Data</th><th>VTR</th><th>Motorista</th>
               <th>KM Inicial</th><th>KM Final</th><th>KM Dia</th>
               <th>Abast.</th><th>Valor</th><th>Preço/L</th><th>Litros</th><th>Mês</th><th>Ações</th>
             </tr>
@@ -812,21 +862,31 @@ function RecordsTable({ records, scriptUrl, onRefresh, showToast }) {
             {paged.map(r => (
               <tr key={r.id}>
                 <td style={{color:'#94a3b8',fontSize:'12px'}}>{r.id}</td>
+                <td style={{textAlign:'center',padding:'8px 4px'}}>
+                  <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleSelect(r.id)} />
+                </td>
                 <td style={{fontWeight:500}}>{fmt.date(r.data)}</td>
-                <td><span className={`badge ${r.vtr === 'TRZ4A58' ? 'badge-trz' : 'badge-taf'}`}>{r.vtr}</span></td>
+                <td><span className="badge" style={vtrBadgeStyle(r.vtr)}>{r.vtr}</span></td>
                 <td>{r.motorista}</td>
                 <td>{fmt.num(r.km_inicial)}</td>
                 <td>{fmt.num(r.km_final)}</td>
                 <td style={{fontWeight:600,color:r.km_dia>100?'#29ABE2':'#1a1a2e'}}>{r.km_dia}</td>
                 <td>
-                  <span className={`badge ${r.abasteceu === 'SIM' ? 'badge-sim' : 'badge-nao'}`}>{r.abasteceu}</span>
-                  {r.abasteceu === 'SIM' && r.tipo_combustivel && (
-                    <span style={{marginLeft:4,fontSize:'11px',fontWeight:'700',padding:'2px 7px',borderRadius:'12px',
-                      background: (r.tipo_combustivel||'').toLowerCase()==='gasolina' ? '#fef2f2' : '#f0fdf4',
-                      color: (r.tipo_combustivel||'').toLowerCase()==='gasolina' ? '#dc2626' : '#16a34a',
-                      border: `1px solid ${(r.tipo_combustivel||'').toLowerCase()==='gasolina' ? '#fca5a5' : '#86efac'}`
-                    }}>{r.tipo_combustivel}</span>
-                  )}
+                  {r.abasteceu === 'SIM'
+                    ? (() => {
+                        const tipo = (r.tipo_combustivel || 'gasolina').toLowerCase();
+                        const isAlcool = tipo === 'alcool' || tipo === 'álcool' || tipo === 'etanol';
+                        return (
+                          <span style={{display:'inline-block',padding:'2px 10px',borderRadius:'12px',fontSize:'12px',fontWeight:'700',
+                            background: isAlcool ? '#dcfce7' : '#fef2f2',
+                            color: isAlcool ? '#16a34a' : '#dc2626',
+                            border:`1px solid ${isAlcool?'#86efac':'#fca5a5'}`}}>
+                            {isAlcool ? '🟢 Álcool' : '🔴 Gasolina'}
+                          </span>
+                        );
+                      })()
+                    : <span className="badge badge-nao">Não</span>
+                  }
                 </td>
                 <td>{r.valor_abast ? fmt.brl(r.valor_abast) : <span style={{color:'#cbd5e1'}}>-</span>}</td>
                 <td>{r.preco_litro ? `R$ ${Number(r.preco_litro).toFixed(2).replace('.',',')}` : <span style={{color:'#cbd5e1'}}>-</span>}</td>
@@ -858,6 +918,20 @@ function RecordsTable({ records, scriptUrl, onRefresh, showToast }) {
 
       {modalOpen && <RecordModal record={editRecord} onSave={handleSave} onClose={() => { setModalOpen(false); setEditRecord(null); }} saving={saving} />}
 
+      {selectedIds.size > 0 && (
+        <div style={{display:'flex',alignItems:'center',gap:'12px',padding:'10px 16px',background:'#fef2f2',borderRadius:'8px',marginBottom:'12px',border:'1px solid #fca5a5'}}>
+          <span style={{fontWeight:'700',color:'#dc2626',fontSize:'14px'}}>{selectedIds.size} registro(s) selecionado(s)</span>
+          <button onClick={handleDeleteBulk} disabled={deletingBulk}
+            style={{background:'#dc2626',color:'white',border:'none',borderRadius:'6px',padding:'7px 16px',fontWeight:'700',cursor:'pointer',fontSize:'13px'}}>
+            {deletingBulk ? '⏳ Removendo...' : '🗑️ Excluir Selecionados'}
+          </button>
+          <button onClick={() => setSelectedIds(new Set())}
+            style={{background:'none',border:'1px solid #fca5a5',borderRadius:'6px',padding:'6px 12px',color:'#dc2626',cursor:'pointer',fontSize:'13px'}}>
+            Cancelar
+          </button>
+        </div>
+      )}
+
       {confirmDelete && (
         <div className="confirm-overlay">
           <div className="confirm-box">
@@ -882,7 +956,7 @@ function RelatorioPage({ records }) {
 
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo,   setDateTo]   = useState('');
-  const [activePreset, setActivePreset] = useState('mes_atual');
+  const [activePreset, setActivePreset] = useState('');
 
   const applyPreset = (preset) => {
     const now = new Date();
@@ -913,13 +987,10 @@ function RelatorioPage({ records }) {
     setActivePreset(preset);
   };
 
-  // Aplica "este mês" automaticamente na primeira renderização
-  useEffect(() => { applyPreset('mes_atual'); }, []);
-
-  const filtered = useMemo(() =>
-    records.filter(r => r.data && (!dateFrom || r.data >= dateFrom) && (!dateTo || r.data <= dateTo)),
-    [records, dateFrom, dateTo]
-  );
+  const filtered = useMemo(() => {
+    if (!dateFrom || !dateTo) return [];
+    return records.filter(r => r.data && r.data >= dateFrom && r.data <= dateTo);
+  }, [records, dateFrom, dateTo]);
 
   const summary = useMemo(() => CARROS.map(vtr => {
     const recs = filtered.filter(r => r.vtr === vtr);
@@ -940,23 +1011,6 @@ function RelatorioPage({ records }) {
     };
   }).filter(Boolean), [filtered]);
 
-  // Método tanque-cheio: usa TODOS os registros para calcular KM/L entre abastecimentos
-  const kmlAbast = useMemo(() => CARROS.map(vtr => {
-    const fills = records
-      .filter(r => r.vtr === vtr && r.abasteceu === 'SIM' && r.km_abst)
-      .sort((a,b) => a.data.localeCompare(b.data));
-    return {
-      vtr,
-      rows: fills.map((r, i) => {
-        if (i === 0) return { ...r, kmPerc: null, kml: null, isRef: true };
-        const prev = fills[i-1];
-        const kmPerc = r.km_abst - prev.km_abst;
-        const kml = r.litros > 0 ? kmPerc / r.litros : null;
-        return { ...r, kmPerc, kml, isRef: false };
-      })
-    };
-  }), [records]);
-
   const PRESETS = [
     {key:'semana_atual',   label:'Esta semana'},
     {key:'semana_passada', label:'Semana passada'},
@@ -973,7 +1027,15 @@ function RelatorioPage({ records }) {
   return (
     <div>
       {/* ── Seletor de período ── */}
-      <div className="section-title">📅 Relatório por Período</div>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'8px',marginBottom:'8px'}}>
+        <div className="section-title" style={{marginBottom:0}}>📅 Relatório por Período</div>
+        {summary.length > 0 && (
+          <button onClick={() => window.print()}
+            style={{background:'#1e3a5f',color:'white',border:'none',borderRadius:'8px',padding:'8px 18px',fontWeight:'700',fontSize:'13px',cursor:'pointer'}}>
+            🖨️ Imprimir Relatório
+          </button>
+        )}
+      </div>
 
       <div className="relatorio-presets">
         {PRESETS.map(p => (
@@ -1025,7 +1087,7 @@ function RelatorioPage({ records }) {
             <tbody>
               {summary.map(s => (
                 <tr key={s.vtr}>
-                  <td><span className={`vtr-badge ${s.vtr==='TRZ4A58'?'mobi':'montana'}`}>{s.vtr}</span></td>
+                  <td><span className="vtr-badge" style={vtrBadgeStyle(s.vtr)}>{s.vtr}</span></td>
                   <td>{fmt.date(s.dataInicio)}</td>
                   <td>{fmt.date(s.dataFim)}</td>
                   <td style={{textAlign:'center'}}>{s.diasRodados}</td>
@@ -1066,69 +1128,74 @@ function RelatorioPage({ records }) {
         </div>
       )}
 
-      {/* ── KM/L por abastecimento ── */}
-      <div className="section-title" style={{marginTop:32}}>⛽ Verificação de Consumo — KM/L por Abastecimento</div>
-
-
-
-      {kmlAbast.map(({vtr, rows}) => !rows.length ? null : (
-        <div className="summary-table-wrap" key={vtr} style={{marginBottom:20}}>
-          <div className="summary-header">
-            <h3>
-              <span className={`vtr-badge ${vtr==='TRZ4A58'?'mobi':'montana'}`}>{vtr}</span>
-              {VTR_NAMES[vtr]}
-            </h3>
-            <span style={{fontSize:12,color:'#94a3b8'}}>{rows.length} abastecimento(s) registrado(s)</span>
-          </div>
-          <div style={{overflowX:'auto'}}>
-          <table>
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Motorista</th>
-                <th>KM Odômetro</th>
-                <th>Litros</th>
-                <th>Valor</th>
-                <th>R$/L</th>
-                <th>KM percorrido</th>
-                <th>KM/L calculado</th>
-                <th>Avaliação</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(r => (
-                <tr key={r.id}>
-                  <td>{fmt.date(r.data)}</td>
-                  <td style={{fontSize:'12px'}}>{r.motorista}</td>
-                  <td style={{fontWeight:600}}>{fmt.num(r.km_abst)}</td>
-                  <td>{fmt.dec(r.litros,2)} L</td>
-                  <td>{fmt.brl(r.valor_abast)}</td>
-                  <td style={{color:'#64748b',fontSize:'12px'}}>R$ {fmt.dec(r.preco_litro,2)}/L</td>
-                  <td style={{fontWeight:600, color: r.kmPerc != null ? (r.kmPerc > 0 ? '#1a1a2e' : '#dc2626') : '#94a3b8'}}>
-                    {r.kmPerc != null ? fmt.num(r.kmPerc)+' km' : r.isRef ? '—' : 'erro: KM negativo?'}
-                  </td>
-                  <td className={kmlClass(r.kml)} style={{color: kmlColor(r.kml)}}>
-                    {r.kml != null ? fmt.dec(r.kml,2)+' km/L' : '—'}
-                  </td>
-                  <td>
-                    {r.isRef
-                      ? <span className="badge badge-nao">1º registro</span>
-                      : r.kml == null
-                        ? <span className="badge badge-nao">Sem litros</span>
-                        : r.kml >= 7
-                          ? <span className="badge badge-sim">✅ Bom</span>
-                          : r.kml >= 5
-                            ? <span className="badge" style={{background:'#fef3c7',color:'#d97706'}}>⚠️ Regular</span>
-                            : <span className="badge" style={{background:'#fee2e2',color:'#dc2626'}}>🔴 Baixo</span>
-                    }
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
-        </div>
-      ))}
+      {/* ── Detalhamento por veículo ── */}
+      {summary.length > 0 && (
+        <>
+          <div className="section-title" style={{marginTop:32}}>🚗 Detalhamento por Veículo</div>
+          {summary.map(s => {
+            const carRecs = filtered.filter(r => r.vtr === s.vtr).sort((a,b) => a.data.localeCompare(b.data));
+            const vInfo = VEICULOS_LIST.find(v => v.placa === s.vtr);
+            return (
+              <div className="summary-table-wrap" key={s.vtr} style={{marginBottom:20}}>
+                <div className="summary-header">
+                  <h3>
+                    <span className="vtr-badge" style={vtrBadgeStyle(s.vtr)}>{s.vtr}</span>
+                    {' '}{vInfo ? `${vInfo.nome} (${s.vtr})` : s.vtr}
+                  </h3>
+                  <span style={{fontSize:12,color:'#94a3b8'}}>{carRecs.length} dia(s) · {s.abastQtd} abast. · {fmt.num(s.kmRodado)} km</span>
+                </div>
+                <div style={{overflowX:'auto'}}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Data</th>
+                        <th>Motorista</th>
+                        <th>KM Inicial</th>
+                        <th>KM Final</th>
+                        <th>KM Dia</th>
+                        <th>Abast.</th>
+                        <th>Litros</th>
+                        <th>Valor R$</th>
+                        <th>R$/L</th>
+                        <th>Nível Ini.</th>
+                        <th>Nível Fim</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {carRecs.map(r => {
+                        const tipo = (r.tipo_combustivel || '').toLowerCase() || (r.abasteceu === 'SIM' ? 'gasolina' : '');
+                        const isAlcool = tipo === 'alcool' || tipo === 'álcool' || tipo === 'etanol';
+                        return (
+                          <tr key={r.id}>
+                            <td style={{fontWeight:600}}>{fmt.date(r.data)}</td>
+                            <td style={{fontSize:'12px'}}>{r.motorista}</td>
+                            <td>{fmt.num(r.km_inicial)}</td>
+                            <td>{fmt.num(r.km_final)}</td>
+                            <td style={{fontWeight:700,color:'#1e3a5f'}}>{fmt.num(r.km_dia)} km</td>
+                            <td>
+                              {r.abasteceu === 'SIM'
+                                ? <span className="badge" style={{background: isAlcool?'#dcfce7':'#fef2f2', color: isAlcool?'#16a34a':'#dc2626', border:`1px solid ${isAlcool?'#86efac':'#fca5a5'}`}}>
+                                    {tipo ? tipo.charAt(0).toUpperCase()+tipo.slice(1) : 'Gasolina'}
+                                  </span>
+                                : <span className="badge badge-nao">Não</span>
+                              }
+                            </td>
+                            <td>{r.litros ? fmt.dec(r.litros,2)+' L' : '—'}</td>
+                            <td>{r.valor_abast ? fmt.brl(r.valor_abast) : '—'}</td>
+                            <td style={{fontSize:'12px',color:'#64748b'}}>{r.preco_litro ? 'R$ '+fmt.dec(r.preco_litro,2) : '—'}</td>
+                            <td style={{fontSize:'12px'}}>{r.nivel_inicio||'—'}</td>
+                            <td style={{fontSize:'12px'}}>{r.nivel_fim||'—'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+        </>
+      )}
 
 
     </div>
@@ -1778,7 +1845,7 @@ function RotasPage({ scriptUrl }) {
                         <td style={{fontWeight:600}}>{fmtDate(r.data)}</td>
                         <td style={{fontWeight:700,color:'#29ABE2',whiteSpace:'nowrap'}}>{r.hora||'—'}</td>
                         <td>
-                          <span className={`vtr-badge ${r.vtr==='TRZ4A58'?'mobi':'montana'}`}>{r.vtr}</span>
+                          <span className="vtr-badge" style={vtrBadgeStyle(r.vtr)}>{r.vtr}</span>
                         </td>
                         <td style={{fontSize:'12px'}}>{r.motorista}</td>
                         <td>{r.destino||'—'}</td>
