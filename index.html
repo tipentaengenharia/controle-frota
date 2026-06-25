@@ -400,7 +400,7 @@ function SetupScreen({ onSave }) {
 }
 
 // ─── MODAL FORM ──────────────────────────────────────────────────────────────
-const EMPTY_FORM = { data:'', vtr:'TRZ4A58', motorista:'DILERMANDO', km_inicial:'', km_final:'', abasteceu:'NÃO', km_abst:'', valor_abast:'', preco_litro:'', litros:'', mes:'' };
+const EMPTY_FORM = { data:'', vtr:'TRZ4A58', motorista:'DILERMANDO', km_inicial:'', km_final:'', abasteceu:'NÃO', km_abst:'', valor_abast:'', preco_litro:'', litros:'', mes:'', tipo_combustivel:'gasolina' };
 
 function RecordModal({ record, onSave, onClose, saving }) {
   const [form, setForm] = useState(() => record ? {
@@ -498,6 +498,20 @@ function RecordModal({ record, onSave, onClose, saving }) {
               </select>
             </div>
             {form.abasteceu === 'SIM' && <>
+              <div className="form-group">
+                <label>Tipo de Combustível</label>
+                <div style={{display:'flex',gap:'8px'}}>
+                  {[{val:'gasolina',label:'⛽ Gasolina',activeColor:'#dc2626'},{val:'alcool',label:'🌿 Álcool',activeColor:'#16a34a'}].map(opt=>(
+                    <button key={opt.val} onClick={()=>set('tipo_combustivel',opt.val)}
+                      style={{flex:1,padding:'9px',borderRadius:'8px',fontWeight:'700',fontSize:'13px',cursor:'pointer',
+                        border:`1.5px solid ${(form.tipo_combustivel||'gasolina')===opt.val ? opt.activeColor : '#d1d5db'}`,
+                        background: (form.tipo_combustivel||'gasolina')===opt.val ? opt.activeColor : 'white',
+                        color: (form.tipo_combustivel||'gasolina')===opt.val ? 'white' : '#374151'}}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="form-group">
                 <label>KM no Abastecimento</label>
                 <input type="number" value={form.km_abst} onChange={e => set('km_abst', e.target.value)} />
@@ -764,6 +778,7 @@ function RecordsTable({ records, scriptUrl, onRefresh, showToast }) {
 
   const handleDeleteBulk = async () => {
     if (selectedIds.size === 0) return;
+    if (!window.confirm(`Excluir ${selectedIds.size} registro(s) selecionado(s)? Esta ação não pode ser desfeita.`)) return;
     const idsToDelete = [...selectedIds];
     setDeletingBulk(true);
     let errors = 0;
@@ -1389,6 +1404,14 @@ function CadastroManualPage({ scriptUrl }) {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
   const [success, setSuccess] = React.useState('');
+  const [lastKmForVtr, setLastKmForVtr] = React.useState(null);
+  React.useEffect(() => {
+    if (!form.vtr) { setLastKmForVtr(null); return; }
+    fetch(scriptUrl + '?action=lastKmFinal&vtr=' + encodeURIComponent(form.vtr))
+      .then(r => r.json())
+      .then(d => setLastKmForVtr(d.km_final || null))
+      .catch(() => {});
+  }, [form.vtr]);
 
   const handleSenha = () => {
     if (senhaInput === '2311') { setAuthenticated(true); }
@@ -1408,6 +1431,7 @@ function CadastroManualPage({ scriptUrl }) {
     if (!form.km_final)    { setError('Informe o KM final'); return; }
     const ki = parseInt(form.km_inicial), kf = parseInt(form.km_final);
     if (kf <= ki)          { setError('KM final deve ser maior que KM inicial'); return; }
+    if (lastKmForVtr && ki < lastKmForVtr) { setError(`KM inicial (${ki.toLocaleString('pt-BR')}) é menor que o último KM registrado para esta viatura (${lastKmForVtr.toLocaleString('pt-BR')})`); return; }
     if (!form.nivel_inicio){ setError('Selecione o nível de combustível no início'); return; }
     if (!form.nivel_fim)   { setError('Selecione o nível de combustível no fim'); return; }
     const [dia, mes, ano] = form.data.split('/');
@@ -1507,6 +1531,7 @@ function CadastroManualPage({ scriptUrl }) {
           <div style={groupStyle}>
             <label style={labelStyle}>KM Inicial</label>
             <input type="number" value={form.km_inicial} onChange={e=>setForm(f=>({...f,km_inicial:e.target.value}))} placeholder="Ex: 15000" style={inputStyle} />
+            {lastKmForVtr && <div style={{fontSize:'11px',color:'#6b7280',marginTop:'3px'}}>Último KM registrado: {lastKmForVtr.toLocaleString('pt-BR')}</div>}
           </div>
           <div style={groupStyle}>
             <label style={labelStyle}>KM Final</label>
@@ -1765,7 +1790,7 @@ function RotasPage({ scriptUrl }) {
     try {
       let url = scriptUrl + '?action=getRotas';
       if (filterVtr)       url += '&vtr='       + encodeURIComponent(filterVtr);
-      if (filterData)      url += '&data='      + encodeURIComponent(filterData);
+      if (filterData)      url += '&data='      + encodeURIComponent(filterData.split('-').reverse().join('/'));
       if (filterMotorista) url += '&motorista=' + encodeURIComponent(filterMotorista);
       const data = await apiGet(url);
       const sorted = [...data].sort((a,b) => {
