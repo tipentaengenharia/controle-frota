@@ -235,6 +235,14 @@
   td.kml-bad  { color:#dc2626; font-weight:700; }
   td.kml-none { color:#94a3b8; }
   .total-row td { background:#f8fafc; font-weight:700; border-top:2px solid #e2e8f0; }
+  @media print {
+    .sidebar, .navbar, .no-print, .relatorio-presets, .period-picker, .table-toolbar, .pagination, .btn-danger, .btn-secondary { display: none !important; }
+    .main-content { margin: 0 !important; padding: 0 !important; }
+    .page-wrap { padding: 0 !important; }
+    body { background: #fff; font-size: 11px; }
+    .summary-table-wrap { break-inside: avoid; margin-bottom: 16px; }
+    table { page-break-inside: avoid; }
+  }
 </style>
 </head>
 <body>
@@ -687,6 +695,13 @@ function RecordsTable({ records, scriptUrl, onRefresh, showToast }) {
   const [editRecord, setEditRecord] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+
+  const toggleSelect = (id) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
 
   const filtered = useMemo(() => {
     const list = records.filter(r =>
@@ -745,6 +760,21 @@ function RecordsTable({ records, scriptUrl, onRefresh, showToast }) {
     setSaving(false);
   };
 
+  const handleDeleteSelected = async () => {
+    if (!selectedIds.size) return;
+    setSaving(true);
+    let erros = 0;
+    for (const id of selectedIds) {
+      try { await apiPost(scriptUrl, { action: 'delete', id }); }
+      catch(e) { erros++; }
+    }
+    setSelectedIds(new Set());
+    await onRefresh();
+    if (erros) showToast(`⚠️ ${erros} erro(s) ao excluir.`, 'error');
+    else showToast(`✅ ${selectedIds.size > 0 ? selectedIds.size : 'Registros'} removido(s)!`, 'success');
+    setSaving(false);
+  };
+
   return (
     <div>
       <div className="table-toolbar">
@@ -798,19 +828,46 @@ function RecordsTable({ records, scriptUrl, onRefresh, showToast }) {
         </div>
       </div>
 
+      {/* ── Barra de seleção múltipla ── */}
+      {selectedIds.size > 0 && (
+        <div style={{background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:10,padding:'10px 18px',marginBottom:12,display:'flex',alignItems:'center',gap:12}}>
+          <span style={{fontWeight:600,color:'#dc2626',fontSize:'14px'}}>🗑️ {selectedIds.size} registro(s) selecionado(s)</span>
+          <button className="btn btn-danger btn-sm" disabled={saving}
+            onClick={() => { if (window.confirm(`Excluir ${selectedIds.size} registro(s) permanentemente?`)) handleDeleteSelected(); }}>
+            {saving ? '⏳ Excluindo...' : 'Excluir Selecionados'}
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => setSelectedIds(new Set())}>Cancelar</button>
+        </div>
+      )}
+
       <div className="table-container">
         <table>
           <thead>
             <tr>
+              <th style={{width:36}}>
+                <input type="checkbox" title="Selecionar página"
+                  checked={paged.length > 0 && paged.every(r => selectedIds.has(r.id))}
+                  onChange={() => {
+                    const allSel = paged.every(r => selectedIds.has(r.id));
+                    setSelectedIds(prev => {
+                      const next = new Set(prev);
+                      paged.forEach(r => allSel ? next.delete(r.id) : next.add(r.id));
+                      return next;
+                    });
+                  }} />
+              </th>
               <th>#</th><th>Data</th><th>VTR</th><th>Motorista</th>
               <th>KM Inicial</th><th>KM Final</th><th>KM Dia</th>
               <th>Abast.</th><th>Valor</th><th>Preço/L</th><th>Litros</th><th>Mês</th><th>Ações</th>
             </tr>
           </thead>
           <tbody>
-            {paged.length === 0 && <tr><td colSpan="13"><div className="empty-state"><div className="empty-state-icon">🔍</div><p>Nenhum registro encontrado.</p></div></td></tr>}
+            {paged.length === 0 && <tr><td colSpan="14"><div className="empty-state"><div className="empty-state-icon">🔍</div><p>Nenhum registro encontrado.</p></div></td></tr>}
             {paged.map(r => (
-              <tr key={r.id}>
+              <tr key={r.id} style={selectedIds.has(r.id) ? {background:'#fef2f2'} : {}}>
+                <td style={{textAlign:'center'}}>
+                  <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleSelect(r.id)} />
+                </td>
                 <td style={{color:'#94a3b8',fontSize:'12px'}}>{r.id}</td>
                 <td style={{fontWeight:500}}>{fmt.date(r.data)}</td>
                 <td><span className={`badge ${r.vtr === 'TRZ4A58' ? 'badge-trz' : 'badge-taf'}`}>{r.vtr}</span></td>
@@ -819,13 +876,14 @@ function RecordsTable({ records, scriptUrl, onRefresh, showToast }) {
                 <td>{fmt.num(r.km_final)}</td>
                 <td style={{fontWeight:600,color:r.km_dia>100?'#29ABE2':'#1a1a2e'}}>{r.km_dia}</td>
                 <td>
-                  <span className={`badge ${r.abasteceu === 'SIM' ? 'badge-sim' : 'badge-nao'}`}>{r.abasteceu}</span>
-                  {r.abasteceu === 'SIM' && r.tipo_combustivel && (
-                    <span style={{marginLeft:4,fontSize:'11px',fontWeight:'700',padding:'2px 7px',borderRadius:'12px',
-                      background: (r.tipo_combustivel||'').toLowerCase()==='gasolina' ? '#fef2f2' : '#f0fdf4',
-                      color: (r.tipo_combustivel||'').toLowerCase()==='gasolina' ? '#dc2626' : '#16a34a',
-                      border: `1px solid ${(r.tipo_combustivel||'').toLowerCase()==='gasolina' ? '#fca5a5' : '#86efac'}`
-                    }}>{r.tipo_combustivel}</span>
+                  {r.abasteceu === 'SIM' ? (
+                    <span style={{fontSize:'11px',fontWeight:'700',padding:'2px 8px',borderRadius:'12px',
+                      background: (r.tipo_combustivel||'gasolina').toLowerCase()==='gasolina' ? '#fef2f2' : '#f0fdf4',
+                      color: (r.tipo_combustivel||'gasolina').toLowerCase()==='gasolina' ? '#dc2626' : '#16a34a',
+                      border: `1px solid ${(r.tipo_combustivel||'gasolina').toLowerCase()==='gasolina' ? '#fca5a5' : '#86efac'}`
+                    }}>{(r.tipo_combustivel||'gasolina').toLowerCase()==='gasolina' ? '🔴 Gasolina' : '🟢 Álcool'}</span>
+                  ) : (
+                    <span className="badge badge-nao">NÃO</span>
                   )}
                 </td>
                 <td>{r.valor_abast ? fmt.brl(r.valor_abast) : <span style={{color:'#cbd5e1'}}>-</span>}</td>
@@ -882,7 +940,7 @@ function RelatorioPage({ records }) {
 
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo,   setDateTo]   = useState('');
-  const [activePreset, setActivePreset] = useState('mes_atual');
+  const [activePreset, setActivePreset] = useState('');
 
   const applyPreset = (preset) => {
     const now = new Date();
@@ -913,10 +971,8 @@ function RelatorioPage({ records }) {
     setActivePreset(preset);
   };
 
-  // Aplica "este mês" automaticamente na primeira renderização
-  useEffect(() => { applyPreset('mes_atual'); }, []);
-
   const filtered = useMemo(() =>
+    (!dateFrom && !dateTo) ? [] :
     records.filter(r => r.data && (!dateFrom || r.data >= dateFrom) && (!dateTo || r.data <= dateTo)),
     [records, dateFrom, dateTo]
   );
@@ -973,7 +1029,13 @@ function RelatorioPage({ records }) {
   return (
     <div>
       {/* ── Seletor de período ── */}
-      <div className="section-title">📅 Relatório por Período</div>
+      <div className="section-title" style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <span>📅 Relatório por Período</span>
+        {summary.length > 0 && (
+          <button className="btn btn-secondary btn-sm no-print" style={{fontSize:'13px',padding:'5px 14px'}}
+            onClick={() => window.print()}>🖨️ Imprimir</button>
+        )}
+      </div>
 
       <div className="relatorio-presets">
         {PRESETS.map(p => (
@@ -996,7 +1058,12 @@ function RelatorioPage({ records }) {
       </div>
 
       {/* ── Tabela de resumo ── */}
-      {summary.length === 0 ? (
+      {!dateFrom && !dateTo ? (
+        <div className="empty-state">
+          <div className="empty-state-icon">📅</div>
+          <p>Selecione um período acima para gerar o relatório.</p>
+        </div>
+      ) : summary.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon">📭</div>
           <p>Nenhum registro encontrado neste período.</p>
@@ -1066,69 +1133,84 @@ function RelatorioPage({ records }) {
         </div>
       )}
 
-      {/* ── KM/L por abastecimento ── */}
-      <div className="section-title" style={{marginTop:32}}>⛽ Verificação de Consumo — KM/L por Abastecimento</div>
-
-
-
-      {kmlAbast.map(({vtr, rows}) => !rows.length ? null : (
-        <div className="summary-table-wrap" key={vtr} style={{marginBottom:20}}>
-          <div className="summary-header">
-            <h3>
-              <span className={`vtr-badge ${vtr==='TRZ4A58'?'mobi':'montana'}`}>{vtr}</span>
-              {VTR_NAMES[vtr]}
-            </h3>
-            <span style={{fontSize:12,color:'#94a3b8'}}>{rows.length} abastecimento(s) registrado(s)</span>
-          </div>
-          <div style={{overflowX:'auto'}}>
-          <table>
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Motorista</th>
-                <th>KM Odômetro</th>
-                <th>Litros</th>
-                <th>Valor</th>
-                <th>R$/L</th>
-                <th>KM percorrido</th>
-                <th>KM/L calculado</th>
-                <th>Avaliação</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(r => (
-                <tr key={r.id}>
-                  <td>{fmt.date(r.data)}</td>
-                  <td style={{fontSize:'12px'}}>{r.motorista}</td>
-                  <td style={{fontWeight:600}}>{fmt.num(r.km_abst)}</td>
-                  <td>{fmt.dec(r.litros,2)} L</td>
-                  <td>{fmt.brl(r.valor_abast)}</td>
-                  <td style={{color:'#64748b',fontSize:'12px'}}>R$ {fmt.dec(r.preco_litro,2)}/L</td>
-                  <td style={{fontWeight:600, color: r.kmPerc != null ? (r.kmPerc > 0 ? '#1a1a2e' : '#dc2626') : '#94a3b8'}}>
-                    {r.kmPerc != null ? fmt.num(r.kmPerc)+' km' : r.isRef ? '—' : 'erro: KM negativo?'}
-                  </td>
-                  <td className={kmlClass(r.kml)} style={{color: kmlColor(r.kml)}}>
-                    {r.kml != null ? fmt.dec(r.kml,2)+' km/L' : '—'}
-                  </td>
-                  <td>
-                    {r.isRef
-                      ? <span className="badge badge-nao">1º registro</span>
-                      : r.kml == null
-                        ? <span className="badge badge-nao">Sem litros</span>
-                        : r.kml >= 7
-                          ? <span className="badge badge-sim">✅ Bom</span>
-                          : r.kml >= 5
-                            ? <span className="badge" style={{background:'#fef3c7',color:'#d97706'}}>⚠️ Regular</span>
-                            : <span className="badge" style={{background:'#fee2e2',color:'#dc2626'}}>🔴 Baixo</span>
-                    }
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
-        </div>
-      ))}
+      {/* ── Detalhamento por Veículo ── */}
+      {summary.length > 0 && (
+        <>
+          <div className="section-title" style={{marginTop:32}}>🚗 Detalhamento por Veículo — Registros do Período</div>
+          {CARROS.map(vtr => {
+            const recs = filtered.filter(r => r.vtr === vtr).sort((a,b) => a.data.localeCompare(b.data));
+            if (!recs.length) return null;
+            const totalKm = recs.reduce((s,r) => s+r.km_dia,0);
+            const abastRecs = recs.filter(r => r.abasteceu==='SIM');
+            return (
+              <div className="summary-table-wrap" key={vtr} style={{marginBottom:24}}>
+                <div className="summary-header">
+                  <h3>
+                    <span className={`vtr-badge ${vtr==='TRZ4A58'?'mobi':'montana'}`}>{vtr}</span>
+                    {VTR_NAMES[vtr]}
+                  </h3>
+                  <span style={{fontSize:12,color:'#94a3b8'}}>{recs.length} dia(s) • {fmt.num(totalKm)} km total • {abastRecs.length} abastecimento(s)</span>
+                </div>
+                <div style={{overflowX:'auto'}}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Motorista</th>
+                      <th>KM Inicial</th>
+                      <th>KM Final</th>
+                      <th>KM Dia</th>
+                      <th>Combustível</th>
+                      <th>Litros</th>
+                      <th>Valor</th>
+                      <th>R$/L</th>
+                      <th>Nível Início</th>
+                      <th>Nível Fim</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recs.map(r => {
+                      const comb = (r.tipo_combustivel||'').toLowerCase();
+                      return (
+                        <tr key={r.id}>
+                          <td style={{fontWeight:500}}>{fmt.date(r.data)}</td>
+                          <td style={{fontSize:'12px'}}>{r.motorista}</td>
+                          <td>{fmt.num(r.km_inicial)}</td>
+                          <td>{fmt.num(r.km_final)}</td>
+                          <td style={{fontWeight:700,color:r.km_dia>100?'#29ABE2':'#1a1a2e'}}>{fmt.num(r.km_dia)} km</td>
+                          <td>
+                            {r.abasteceu==='SIM' ? (
+                              <span style={{fontSize:'11px',fontWeight:'700',padding:'2px 8px',borderRadius:'12px',
+                                background: comb==='gasolina'||!comb ? '#fef2f2' : '#f0fdf4',
+                                color: comb==='gasolina'||!comb ? '#dc2626' : '#16a34a',
+                                border: `1px solid ${comb==='gasolina'||!comb ? '#fca5a5' : '#86efac'}`
+                              }}>{comb==='gasolina'||!comb ? '🔴 Gasolina' : '🟢 Álcool'}</span>
+                            ) : <span style={{color:'#94a3b8',fontSize:'12px'}}>—</span>}
+                          </td>
+                          <td>{r.litros ? fmt.dec(r.litros,2)+' L' : <span style={{color:'#cbd5e1'}}>—</span>}</td>
+                          <td>{r.valor_abast ? fmt.brl(r.valor_abast) : <span style={{color:'#cbd5e1'}}>—</span>}</td>
+                          <td style={{fontSize:'12px',color:'#64748b'}}>{r.preco_litro ? `R$ ${fmt.dec(r.preco_litro,2)}/L` : <span style={{color:'#cbd5e1'}}>—</span>}</td>
+                          <td style={{fontSize:'12px',color:'#64748b'}}>{r.nivel_inicio || <span style={{color:'#cbd5e1'}}>—</span>}</td>
+                          <td style={{fontSize:'12px',color:'#64748b'}}>{r.nivel_fim || <span style={{color:'#cbd5e1'}}>—</span>}</td>
+                        </tr>
+                      );
+                    })}
+                    <tr className="total-row">
+                      <td colSpan={4}>SUBTOTAL {vtr}</td>
+                      <td style={{fontWeight:700}}>{fmt.num(totalKm)} km</td>
+                      <td>{abastRecs.length}x</td>
+                      <td>{abastRecs.reduce((s,r)=>s+(r.litros||0),0) > 0 ? fmt.dec(abastRecs.reduce((s,r)=>s+(r.litros||0),0),2)+' L' : '—'}</td>
+                      <td>{abastRecs.reduce((s,r)=>s+(r.valor_abast||0),0) > 0 ? fmt.brl(abastRecs.reduce((s,r)=>s+(r.valor_abast||0),0)) : '—'}</td>
+                      <td colSpan={3}></td>
+                    </tr>
+                  </tbody>
+                </table>
+                </div>
+              </div>
+            );
+          })}
+        </>
+      )}
 
 
     </div>
