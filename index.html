@@ -80,6 +80,12 @@
   .vtr-badge { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; }
   .vtr-badge.mobi { background: #dbeafe; color: #1d4ed8; }
   .vtr-badge.montana { background: #fce7f3; color: #be185d; }
+  .vtr-c0 { background: #dbeafe; color: #1d4ed8; }
+  .vtr-c1 { background: #fce7f3; color: #be185d; }
+  .vtr-c2 { background: #dcfce7; color: #15803d; }
+  .vtr-c3 { background: #ffedd5; color: #c2410c; }
+  .vtr-c4 { background: #f3e8ff; color: #7c3aed; }
+  .vtr-c5 { background: #ccfbf1; color: #0f766e; }
   .vtr-card-title { font-size: 15px; font-weight: 700; color: #1a1a2e; }
   .vtr-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
   .vtr-stat { text-align: center; padding: 12px 8px; background: #f8fafc; border-radius: 8px; }
@@ -114,6 +120,12 @@
   .badge-nao { background: #f1f5f9; color: #94a3b8; }
   .badge-trz { background: #dbeafe; color: #1d4ed8; }
   .badge-taf { background: #fce7f3; color: #be185d; }
+  .badge-c0 { background: #dbeafe; color: #1d4ed8; }
+  .badge-c1 { background: #fce7f3; color: #be185d; }
+  .badge-c2 { background: #dcfce7; color: #15803d; }
+  .badge-c3 { background: #ffedd5; color: #c2410c; }
+  .badge-c4 { background: #f3e8ff; color: #7c3aed; }
+  .badge-c5 { background: #ccfbf1; color: #0f766e; }
   .badge-mes { background: #fef3c7; color: #d97706; }
   .actions { display: flex; gap: 6px; }
   .pagination { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-top: 1px solid #f1f5f9; font-size: 13px; color: #64748b; }
@@ -286,6 +298,9 @@ const MOTORISTAS = MOTORISTAS_LIST.map(m => m.nome);
 const MESES_ORDER = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
 const MESES_LABEL = {jan:'Janeiro',fev:'Fevereiro',mar:'Março',abr:'Abril',mai:'Maio',jun:'Junho',jul:'Julho',ago:'Agosto',set:'Setembro',out:'Outubro',nov:'Novembro',dez:'Dezembro'};
 const VTR_NAMES = Object.fromEntries(VEICULOS_LIST.map(v => [v.placa, `${v.nome} (${v.placa})`]));
+// Cores dinâmicas por índice — funciona para qualquer quantidade de carros cadastrados
+const VTR_COLOR = Object.fromEntries(VEICULOS_LIST.map((v,i) => [v.placa, `vtr-c${Math.min(i,5)}`]));
+const VTR_BADGE_COLOR = Object.fromEntries(VEICULOS_LIST.map((v,i) => [v.placa, `badge-c${Math.min(i,5)}`]));
 const PAGE_SIZE = 20;
 
 // ─── API ──────────────────────────────────────────────────────────────────────
@@ -402,7 +417,7 @@ function SetupScreen({ onSave }) {
 }
 
 // ─── MODAL FORM ──────────────────────────────────────────────────────────────
-const EMPTY_FORM = { data:'', vtr:'TRZ4A58', motorista:'DILERMANDO', km_inicial:'', km_final:'', abasteceu:'NÃO', km_abst:'', valor_abast:'', preco_litro:'', litros:'', mes:'' };
+const EMPTY_FORM = { data:'', vtr:'TRZ4A58', motorista:'DILERMANDO', km_inicial:'', km_final:'', abasteceu:'NÃO', km_abst:'', valor_abast:'', preco_litro:'', litros:'', mes:'', tipo_combustivel:'gasolina', nivel_inicio:'', nivel_fim:'' };
 
 function RecordModal({ record, onSave, onClose, saving }) {
   const [form, setForm] = useState(() => record ? {
@@ -411,6 +426,9 @@ function RecordModal({ record, onSave, onClose, saving }) {
     valor_abast: record.valor_abast ?? '',
     preco_litro: record.preco_litro ?? '',
     litros: record.litros ?? '',
+    tipo_combustivel: record.tipo_combustivel || 'gasolina',
+    nivel_inicio: record.nivel_inicio ?? '',
+    nivel_fim: record.nivel_fim ?? '',
   } : { ...EMPTY_FORM });
 
   const set = (k, v) => setForm(f => {
@@ -445,6 +463,9 @@ function RecordModal({ record, onSave, onClose, saving }) {
       preco_litro: form.preco_litro ? parseFloat(form.preco_litro) : null,
       litros: form.litros ? parseFloat(form.litros) : null,
       mes: getMes(form.data),
+      tipo_combustivel: form.abasteceu === 'SIM' ? (form.tipo_combustivel || 'gasolina') : '',
+      nivel_inicio: form.nivel_inicio,
+      nivel_fim: form.nivel_fim,
     });
   };
 
@@ -500,6 +521,49 @@ function RecordModal({ record, onSave, onClose, saving }) {
               </select>
             </div>
             {form.abasteceu === 'SIM' && <>
+              <div className="form-group" style={{gridColumn:'1/-1'}}>
+                <label>Tipo de Combustível</label>
+                <div style={{display:'flex',gap:'10px',marginTop:'4px'}}>
+                  <button type="button"
+                    onClick={() => set('tipo_combustivel','gasolina')}
+                    style={{flex:1,padding:'9px 0',borderRadius:8,border:'2px solid',cursor:'pointer',fontWeight:600,fontSize:'14px',
+                      borderColor: form.tipo_combustivel==='gasolina' ? '#dc2626' : '#e2e8f0',
+                      background: form.tipo_combustivel==='gasolina' ? '#fef2f2' : '#f8fafc',
+                      color: form.tipo_combustivel==='gasolina' ? '#dc2626' : '#64748b'}}>
+                    🔴 Gasolina
+                  </button>
+                  <button type="button"
+                    onClick={() => set('tipo_combustivel','alcool')}
+                    style={{flex:1,padding:'9px 0',borderRadius:8,border:'2px solid',cursor:'pointer',fontWeight:600,fontSize:'14px',
+                      borderColor: form.tipo_combustivel==='alcool' ? '#16a34a' : '#e2e8f0',
+                      background: form.tipo_combustivel==='alcool' ? '#f0fdf4' : '#f8fafc',
+                      color: form.tipo_combustivel==='alcool' ? '#16a34a' : '#64748b'}}>
+                    🟢 Álcool
+                  </button>
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Nível Início</label>
+                <select value={form.nivel_inicio} onChange={e => set('nivel_inicio', e.target.value)}>
+                  <option value="">—</option>
+                  <option value="reserva">Reserva</option>
+                  <option value="1/4">1/4</option>
+                  <option value="1/2">1/2</option>
+                  <option value="3/4">3/4</option>
+                  <option value="cheio">Cheio</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Nível Fim</label>
+                <select value={form.nivel_fim} onChange={e => set('nivel_fim', e.target.value)}>
+                  <option value="">—</option>
+                  <option value="reserva">Reserva</option>
+                  <option value="1/4">1/4</option>
+                  <option value="1/2">1/2</option>
+                  <option value="3/4">3/4</option>
+                  <option value="cheio">Cheio</option>
+                </select>
+              </div>
               <div className="form-group">
                 <label>KM no Abastecimento</label>
                 <input type="number" value={form.km_abst} onChange={e => set('km_abst', e.target.value)} />
@@ -599,11 +663,14 @@ function Dashboard({ records }) {
         </div>
       </div>
       <div className="vtr-cards">
-        {vtrStats.map(s => (
+        {vtrStats.map((s, idx) => {
+          const veiculo = VEICULOS_LIST.find(v => v.placa === s.vtr);
+          const nomeVtr = veiculo ? veiculo.nome : s.vtr;
+          return (
           <div className="vtr-card" key={s.vtr}>
             <div className="vtr-card-header">
-              <span className={`vtr-badge ${s.vtr === 'TRZ4A58' ? 'mobi' : 'montana'}`}>{s.vtr}</span>
-              <div className="vtr-card-title">{s.vtr === 'TRZ4A58' ? 'Mobi' : 'Montana'}</div>
+              <span className={`vtr-badge ${VTR_COLOR[s.vtr]||'vtr-c0'}`}>{s.vtr}</span>
+              <div className="vtr-card-title">{nomeVtr}</div>
             </div>
             <div className="vtr-stats">
               <div className="vtr-stat"><div className="vtr-stat-val">{s.km.toLocaleString('pt-BR')}</div><div className="vtr-stat-lbl">KM Rodados</div></div>
@@ -611,7 +678,8 @@ function Dashboard({ records }) {
               <div className="vtr-stat"><div className="vtr-stat-val">{fmt.dec(s.kml,1)}</div><div className="vtr-stat-lbl">km/L</div></div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
       <div className="charts-row">
         <div className="chart-card">
@@ -870,7 +938,7 @@ function RecordsTable({ records, scriptUrl, onRefresh, showToast }) {
                 </td>
                 <td style={{color:'#94a3b8',fontSize:'12px'}}>{r.id}</td>
                 <td style={{fontWeight:500}}>{fmt.date(r.data)}</td>
-                <td><span className={`badge ${r.vtr === 'TRZ4A58' ? 'badge-trz' : 'badge-taf'}`}>{r.vtr}</span></td>
+                <td><span className={`badge ${VTR_BADGE_COLOR[r.vtr]||'badge-c0'}`}>{r.vtr}</span></td>
                 <td>{r.motorista}</td>
                 <td>{fmt.num(r.km_inicial)}</td>
                 <td>{fmt.num(r.km_final)}</td>
@@ -1092,7 +1160,7 @@ function RelatorioPage({ records }) {
             <tbody>
               {summary.map(s => (
                 <tr key={s.vtr}>
-                  <td><span className={`vtr-badge ${s.vtr==='TRZ4A58'?'mobi':'montana'}`}>{s.vtr}</span></td>
+                  <td><span className={`vtr-badge ${VTR_COLOR[s.vtr]||'vtr-c0'}`}>{s.vtr}</span></td>
                   <td>{fmt.date(s.dataInicio)}</td>
                   <td>{fmt.date(s.dataFim)}</td>
                   <td style={{textAlign:'center'}}>{s.diasRodados}</td>
@@ -1146,7 +1214,7 @@ function RelatorioPage({ records }) {
               <div className="summary-table-wrap" key={vtr} style={{marginBottom:24}}>
                 <div className="summary-header">
                   <h3>
-                    <span className={`vtr-badge ${vtr==='TRZ4A58'?'mobi':'montana'}`}>{vtr}</span>
+                    <span className={`vtr-badge ${VTR_COLOR[vtr]||'vtr-c0'}`}>{vtr}</span>
                     {VTR_NAMES[vtr]}
                   </h3>
                   <span style={{fontSize:12,color:'#94a3b8'}}>{recs.length} dia(s) • {fmt.num(totalKm)} km total • {abastRecs.length} abastecimento(s)</span>
@@ -1860,7 +1928,7 @@ function RotasPage({ scriptUrl }) {
                         <td style={{fontWeight:600}}>{fmtDate(r.data)}</td>
                         <td style={{fontWeight:700,color:'#29ABE2',whiteSpace:'nowrap'}}>{r.hora||'—'}</td>
                         <td>
-                          <span className={`vtr-badge ${r.vtr==='TRZ4A58'?'mobi':'montana'}`}>{r.vtr}</span>
+                          <span className={`vtr-badge ${VTR_COLOR[r.vtr]||'vtr-c0'}`}>{r.vtr}</span>
                         </td>
                         <td style={{fontSize:'12px'}}>{r.motorista}</td>
                         <td>{r.destino||'—'}</td>
