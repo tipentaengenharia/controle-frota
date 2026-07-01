@@ -1920,6 +1920,7 @@ function RotasPage({ scriptUrl }) {
                       <th>Motorista</th>
                       <th>Destino</th>
                       <th>KM Hodômetro</th>
+                      <th>Localização</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1933,6 +1934,11 @@ function RotasPage({ scriptUrl }) {
                         <td style={{fontSize:'12px'}}>{r.motorista}</td>
                         <td>{r.destino||'—'}</td>
                         <td style={{fontWeight:700,textAlign:'right'}}>{r.km_rota ? Number(r.km_rota).toLocaleString('pt-BR') : '—'}</td>
+                        <td style={{textAlign:'center'}}>
+                          {r.lat && r.lng
+                            ? <a href={`https://maps.google.com/?q=${r.lat},${r.lng}`} target="_blank" rel="noopener noreferrer" title="Ver no Google Maps" style={{fontSize:'18px',textDecoration:'none'}}>📍</a>
+                            : '—'}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
