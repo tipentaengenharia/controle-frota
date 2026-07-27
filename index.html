@@ -1834,7 +1834,7 @@ function RotasAbertasPage({ scriptUrl }) {
 }
 
 // ─── ROTAS PAGE ───────────────────────────────────────────────────────────────
-function RotasPage({ scriptUrl }) {
+function RotasPage({ scriptUrl, records }) {
   const [filterVtr,       setFilterVtr]       = useState('');
   const [filterDataDe,    setFilterDataDe]    = useState('');
   const [filterDataAte,   setFilterDataAte]   = useState('');
@@ -1848,8 +1848,8 @@ function RotasPage({ scriptUrl }) {
   const parseDateKey = d => {
     if (!d) return '';
     const parts = d.split('/');
-    if (parts.length === 3) return parts[2] + parts[1] + parts[0]; // DD/MM/YYYY
-    return d.replace(/-/g, '');                                      // YYYY-MM-DD
+    if (parts.length === 3) return parts[2] + parts[1] + parts[0];
+    return d.replace(/-/g, '');
   };
 
   // Atalhos de período
@@ -1892,50 +1892,79 @@ function RotasPage({ scriptUrl }) {
         return true;
       });
 
-      // Ordena: data desc (YYYYMMDD), hora asc dentro do mesmo dia
+      // Ordena: data desc, hora asc dentro do mesmo dia
       const sorted = [...filtered].sort((a,b) => {
         const da = parseDateKey(a.data), db = parseDateKey(b.data);
         const d = db.localeCompare(da);
         if (d !== 0) return d;
         return (a.hora||'').localeCompare(b.hora||'');
       });
-      setRotas(sorted);
+
+      // Remove duplicatas (mesma data+hora+vtr+motorista+destino+km)
+      const seen = new Set();
+      const deduped = sorted.filter(r => {
+        const key = [r.data, r.hora, r.vtr, r.motorista, r.destino, r.km_rota].join('|');
+        if (seen.has(key)) return false;
+        seen.add(key); return true;
+      });
+
+      setRotas(deduped);
     } catch(e) { setError('Erro ao consultar: ' + e.message); }
     setLoading(false);
   };
 
-  const fmtDate = d => {
-    if (!d) return '—';
-    // Server returns dd/MM/yyyy — display as-is
-    return d;
-  };
+  // Resumo do período — calculado a partir dos registros de sessão (REGISTROS sheet)
+  const resumo = useMemo(() => {
+    if (!searched || !records || !records.length) return null;
+    const de  = filterDataDe  ? filterDataDe.replace(/-/g,'')  : '';
+    const ate = filterDataAte ? filterDataAte.replace(/-/g,'') : '';
+    const recs = records.filter(r => {
+      if (!r.data) return false;
+      if (filterVtr       && r.vtr       !== filterVtr)       return false;
+      if (filterMotorista && r.motorista !== filterMotorista) return false;
+      const rd = r.data.replace(/-/g,'');
+      if (de  && rd < de)  return false;
+      if (ate && rd > ate) return false;
+      return true;
+    });
+    if (!recs.length) return null;
+    const totalKm    = recs.reduce((s,r) => s + (r.km_dia   ||0), 0);
+    const totalLitros= recs.filter(r=>r.abasteceu==='SIM').reduce((s,r) => s + (r.litros||0), 0);
+    const totalValor = recs.filter(r=>r.abasteceu==='SIM').reduce((s,r) => s + (r.valor_abast||0), 0);
+    const abastQtd   = recs.filter(r=>r.abasteceu==='SIM').length;
+    const sessoes    = recs.length;
+    const motoristasUnicos = [...new Set(recs.map(r=>r.motorista))];
+    return { totalKm, totalLitros, totalValor, abastQtd, sessoes, motoristasUnicos };
+  }, [searched, records, filterVtr, filterMotorista, filterDataDe, filterDataAte]);
+
+  const cardStyle = (accent, bg) => ({
+    background: bg, borderRadius:'12px', padding:'14px 16px',
+    borderLeft:`4px solid ${accent}`, flex:'1', minWidth:'140px'
+  });
 
   return (
     <div>
       <div className="section-title">🗺️ Consulta de Rotas</div>
 
-      {/* Filters */}
+      {/* Filtros */}
       <div className="summary-table-wrap" style={{marginBottom:20}}>
-        {/* Atalhos de período */}
         <div style={{padding:'12px 20px 0',display:'flex',flexWrap:'wrap',gap:'8px'}}>
           {[
-            {label:'Hoje',          key:'hoje'},
-            {label:'Esta semana',   key:'semana'},
-            {label:'Este mês',      key:'mes'},
-            {label:'Mês anterior',  key:'mes_anterior'},
-            {label:'Todos',         key:'todos'},
+            {label:'Hoje',         key:'hoje'},
+            {label:'Esta semana',  key:'semana'},
+            {label:'Este mês',     key:'mes'},
+            {label:'Mês anterior', key:'mes_anterior'},
+            {label:'Todos',        key:'todos'},
           ].map(p => (
             <button key={p.key} onClick={()=>applyPreset(p.key)}
               style={{padding:'5px 13px',borderRadius:'20px',border:'1.5px solid #29ABE2',
-                background: 'transparent',color:'#29ABE2',fontSize:'12px',fontWeight:'600',cursor:'pointer',
-                transition:'all 0.15s'}}
+                background:'transparent',color:'#29ABE2',fontSize:'12px',fontWeight:'600',cursor:'pointer',transition:'all 0.15s'}}
               onMouseEnter={e=>{e.target.style.background='#29ABE2';e.target.style.color='#fff';}}
               onMouseLeave={e=>{e.target.style.background='transparent';e.target.style.color='#29ABE2';}}>
               {p.label}
             </button>
           ))}
         </div>
-        {/* Filtros */}
         <div style={{padding:'12px 20px 16px',display:'flex',flexWrap:'wrap',gap:'12px',alignItems:'flex-end'}}>
           <div className="filter-group">
             <span className="filter-label">VTR:</span>
@@ -1970,13 +1999,46 @@ function RotasPage({ scriptUrl }) {
 
       {error && <div style={{color:'#dc2626',padding:'12px 16px',background:'#fee2e2',borderRadius:'8px',marginBottom:16}}>{error}</div>}
 
+      {/* Resumo do período */}
+      {resumo && (
+        <div style={{marginBottom:20}}>
+          <div style={{fontSize:'12px',fontWeight:'700',color:'#6b7280',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'10px'}}>
+            📊 Resumo do Período
+          </div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:'12px'}}>
+            <div style={cardStyle('#3b82f6','#eff6ff')}>
+              <div style={{fontSize:'11px',color:'#6b7280',fontWeight:'600',marginBottom:'4px'}}>🛣️ KM Rodados</div>
+              <div style={{fontSize:'22px',fontWeight:'800',color:'#1e40af'}}>{resumo.totalKm.toLocaleString('pt-BR')}</div>
+              <div style={{fontSize:'11px',color:'#94a3b8',marginTop:'2px'}}>{resumo.sessoes} dia(s) de uso</div>
+            </div>
+            <div style={cardStyle('#f59e0b','#fffbeb')}>
+              <div style={{fontSize:'11px',color:'#6b7280',fontWeight:'600',marginBottom:'4px'}}>⛽ Combustível</div>
+              <div style={{fontSize:'22px',fontWeight:'800',color:'#b45309'}}>{resumo.totalLitros.toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})} L</div>
+              <div style={{fontSize:'11px',color:'#94a3b8',marginTop:'2px'}}>{resumo.abastQtd} abastecimento(s)</div>
+            </div>
+            <div style={cardStyle('#22c55e','#f0fdf4')}>
+              <div style={{fontSize:'11px',color:'#6b7280',fontWeight:'600',marginBottom:'4px'}}>💰 Valor Gasto</div>
+              <div style={{fontSize:'22px',fontWeight:'800',color:'#15803d'}}>R$ {resumo.totalValor.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+              <div style={{fontSize:'11px',color:'#94a3b8',marginTop:'2px'}}>
+                {resumo.totalLitros > 0 && resumo.totalKm > 0 ? `${(resumo.totalKm/resumo.totalLitros).toFixed(1)} km/L` : 'sem abastecimento'}
+              </div>
+            </div>
+            <div style={cardStyle('#8b5cf6','#f5f3ff')}>
+              <div style={{fontSize:'11px',color:'#6b7280',fontWeight:'600',marginBottom:'4px'}}>👤 Motoristas</div>
+              <div style={{fontSize:'22px',fontWeight:'800',color:'#6d28d9'}}>{resumo.motoristasUnicos.length}</div>
+              <div style={{fontSize:'11px',color:'#94a3b8',marginTop:'2px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'120px'}}>{resumo.motoristasUnicos.join(', ')}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {searched && !loading && (
         rotas.length === 0
           ? <div style={{textAlign:'center',padding:'40px',color:'#94a3b8',fontSize:'15px'}}>Nenhuma rota encontrada para os filtros selecionados.</div>
           : (
             <div className="summary-table-wrap">
               <div className="summary-header">
-                <h3>Resultados — {rotas.length} registro(s)</h3>
+                <h3>Paradas — {rotas.length} registro(s)</h3>
               </div>
               <div style={{overflowX:'auto'}}>
                 <table>
@@ -1994,11 +2056,9 @@ function RotasPage({ scriptUrl }) {
                   <tbody>
                     {rotas.map((r,i) => (
                       <tr key={i}>
-                        <td style={{fontWeight:600}}>{fmtDate(r.data)}</td>
+                        <td style={{fontWeight:600}}>{r.data||'—'}</td>
                         <td style={{fontWeight:700,color:'#29ABE2',whiteSpace:'nowrap'}}>{r.hora||'—'}</td>
-                        <td>
-                          <span className={`vtr-badge ${VTR_COLOR[r.vtr]||'vtr-c0'}`}>{r.vtr}</span>
-                        </td>
+                        <td><span className={`vtr-badge ${VTR_COLOR[r.vtr]||'vtr-c0'}`}>{r.vtr}</span></td>
                         <td style={{fontSize:'12px'}}>{r.motorista}</td>
                         <td>{r.destino||'—'}</td>
                         <td style={{fontWeight:700,textAlign:'right'}}>{r.km_rota ? Number(r.km_rota).toLocaleString('pt-BR') : '—'}</td>
@@ -2167,7 +2227,7 @@ function App() {
             <RelatorioPage records={records} />
           )}
           {page === 'rotas' && (
-            <RotasPage scriptUrl={scriptUrl} />
+            <RotasPage scriptUrl={scriptUrl} records={records} />
           )}
           {page === 'rotasAbertas' && <RotasAbertasPage scriptUrl={scriptUrl} />}
           {page === 'cadastroManual' && <CadastroManualPage scriptUrl={scriptUrl} />}
