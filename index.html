@@ -1232,6 +1232,7 @@ function RelatorioPage({ records }) {
                       <th>Litros</th>
                       <th>Valor</th>
                       <th>R$/L</th>
+                      <th>KM/L</th>
                       <th>Nível Início</th>
                       <th>Nível Fim</th>
                     </tr>
@@ -1258,6 +1259,7 @@ function RelatorioPage({ records }) {
                           <td>{r.litros ? fmt.dec(r.litros,2)+' L' : <span style={{color:'#cbd5e1'}}>—</span>}</td>
                           <td>{r.valor_abast ? fmt.brl(r.valor_abast) : <span style={{color:'#cbd5e1'}}>—</span>}</td>
                           <td style={{fontSize:'12px',color:'#64748b'}}>{r.preco_litro ? `R$ ${fmt.dec(r.preco_litro,2)}/L` : <span style={{color:'#cbd5e1'}}>—</span>}</td>
+                          <td style={{color:'#cbd5e1',fontSize:'12px'}}>—</td>
                           <td style={{fontSize:'12px',color:'#64748b'}}>{r.nivel_inicio || <span style={{color:'#cbd5e1'}}>—</span>}</td>
                           <td style={{fontSize:'12px',color:'#64748b'}}>{r.nivel_fim || <span style={{color:'#cbd5e1'}}>—</span>}</td>
                         </tr>
@@ -1274,6 +1276,7 @@ function RelatorioPage({ records }) {
                           <td>{abastRecs.length}x</td>
                           <td>{subL > 0 ? fmt.dec(subL,2)+' L' : '—'}</td>
                           <td>{subR > 0 ? fmt.brl(subR) : '—'}</td>
+                          <td></td>
                           <td className={kmlClass(subKml)} style={{fontWeight:700}}>
                             {subKml ? fmt.dec(subKml,2)+' km/L' : '—'}
                           </td>
