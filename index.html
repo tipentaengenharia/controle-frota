@@ -1836,23 +1836,66 @@ function RotasAbertasPage({ scriptUrl }) {
 // ─── ROTAS PAGE ───────────────────────────────────────────────────────────────
 function RotasPage({ scriptUrl }) {
   const [filterVtr,       setFilterVtr]       = useState('');
-  const [filterData,      setFilterData]      = useState('');
+  const [filterDataDe,    setFilterDataDe]    = useState('');
+  const [filterDataAte,   setFilterDataAte]   = useState('');
   const [filterMotorista, setFilterMotorista] = useState('');
   const [rotas,           setRotas]           = useState([]);
   const [loading,         setLoading]         = useState(false);
   const [error,           setError]           = useState('');
   const [searched,        setSearched]        = useState(false);
 
+  // Converte DD/MM/YYYY → YYYYMMDD para comparação de período
+  const parseDateKey = d => {
+    if (!d) return '';
+    const parts = d.split('/');
+    if (parts.length === 3) return parts[2] + parts[1] + parts[0]; // DD/MM/YYYY
+    return d.replace(/-/g, '');                                      // YYYY-MM-DD
+  };
+
+  // Atalhos de período
+  const applyPreset = (preset) => {
+    const hoje = new Date();
+    const fmt = d => d.toISOString().split('T')[0];
+    if (preset === 'hoje') {
+      setFilterDataDe(fmt(hoje)); setFilterDataAte(fmt(hoje));
+    } else if (preset === 'semana') {
+      const ini = new Date(hoje); ini.setDate(hoje.getDate() - hoje.getDay() + (hoje.getDay()===0?-6:1));
+      setFilterDataDe(fmt(ini)); setFilterDataAte(fmt(hoje));
+    } else if (preset === 'mes') {
+      const ini = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+      setFilterDataDe(fmt(ini)); setFilterDataAte(fmt(hoje));
+    } else if (preset === 'mes_anterior') {
+      const ini = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+      const fim = new Date(hoje.getFullYear(), hoje.getMonth(), 0);
+      setFilterDataDe(fmt(ini)); setFilterDataAte(fmt(fim));
+    } else {
+      setFilterDataDe(''); setFilterDataAte('');
+    }
+  };
+
   const handleSearch = async () => {
     setLoading(true); setError(''); setSearched(true);
     try {
       let url = scriptUrl + '?action=getRotas';
       if (filterVtr)       url += '&vtr='       + encodeURIComponent(filterVtr);
-      if (filterData)      url += '&data='      + encodeURIComponent(filterData.split('-').reverse().join('/'));
       if (filterMotorista) url += '&motorista=' + encodeURIComponent(filterMotorista);
       const data = await apiGet(url);
-      const sorted = [...data].sort((a,b) => {
-        const d = (b.data||'').localeCompare(a.data||'');
+
+      // Filtragem por período no cliente
+      const de  = filterDataDe  ? filterDataDe.replace(/-/g,'')  : '';
+      const ate = filterDataAte ? filterDataAte.replace(/-/g,'') : '';
+      const filtered = data.filter(r => {
+        if (!de && !ate) return true;
+        const rd = parseDateKey(r.data);
+        if (de  && rd < de)  return false;
+        if (ate && rd > ate) return false;
+        return true;
+      });
+
+      // Ordena: data desc (YYYYMMDD), hora asc dentro do mesmo dia
+      const sorted = [...filtered].sort((a,b) => {
+        const da = parseDateKey(a.data), db = parseDateKey(b.data);
+        const d = db.localeCompare(da);
         if (d !== 0) return d;
         return (a.hora||'').localeCompare(b.hora||'');
       });
@@ -1873,7 +1916,27 @@ function RotasPage({ scriptUrl }) {
 
       {/* Filters */}
       <div className="summary-table-wrap" style={{marginBottom:20}}>
-        <div style={{padding:'16px 20px',display:'flex',flexWrap:'wrap',gap:'12px',alignItems:'flex-end'}}>
+        {/* Atalhos de período */}
+        <div style={{padding:'12px 20px 0',display:'flex',flexWrap:'wrap',gap:'8px'}}>
+          {[
+            {label:'Hoje',          key:'hoje'},
+            {label:'Esta semana',   key:'semana'},
+            {label:'Este mês',      key:'mes'},
+            {label:'Mês anterior',  key:'mes_anterior'},
+            {label:'Todos',         key:'todos'},
+          ].map(p => (
+            <button key={p.key} onClick={()=>applyPreset(p.key)}
+              style={{padding:'5px 13px',borderRadius:'20px',border:'1.5px solid #29ABE2',
+                background: 'transparent',color:'#29ABE2',fontSize:'12px',fontWeight:'600',cursor:'pointer',
+                transition:'all 0.15s'}}
+              onMouseEnter={e=>{e.target.style.background='#29ABE2';e.target.style.color='#fff';}}
+              onMouseLeave={e=>{e.target.style.background='transparent';e.target.style.color='#29ABE2';}}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+        {/* Filtros */}
+        <div style={{padding:'12px 20px 16px',display:'flex',flexWrap:'wrap',gap:'12px',alignItems:'flex-end'}}>
           <div className="filter-group">
             <span className="filter-label">VTR:</span>
             <select value={filterVtr} onChange={e=>setFilterVtr(e.target.value)}>
@@ -1882,8 +1945,13 @@ function RotasPage({ scriptUrl }) {
             </select>
           </div>
           <div className="filter-group">
-            <span className="filter-label">Data:</span>
-            <input type="date" value={filterData} onChange={e=>setFilterData(e.target.value)}
+            <span className="filter-label">De:</span>
+            <input type="date" value={filterDataDe} onChange={e=>setFilterDataDe(e.target.value)}
+              style={{border:'1.5px solid #e2e8f0',borderRadius:'8px',padding:'7px 10px',fontSize:'13px',color:'#1a1a2e',background:'#fff'}}/>
+          </div>
+          <div className="filter-group">
+            <span className="filter-label">Até:</span>
+            <input type="date" value={filterDataAte} onChange={e=>setFilterDataAte(e.target.value)}
               style={{border:'1.5px solid #e2e8f0',borderRadius:'8px',padding:'7px 10px',fontSize:'13px',color:'#1a1a2e',background:'#fff'}}/>
           </div>
           <div className="filter-group">
