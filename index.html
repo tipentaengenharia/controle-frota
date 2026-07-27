@@ -1263,14 +1263,24 @@ function RelatorioPage({ records }) {
                         </tr>
                       );
                     })}
-                    <tr className="total-row">
-                      <td colSpan={4}>SUBTOTAL {vtr}</td>
-                      <td style={{fontWeight:700}}>{fmt.num(totalKm)} km</td>
-                      <td>{abastRecs.length}x</td>
-                      <td>{abastRecs.reduce((s,r)=>s+(r.litros||0),0) > 0 ? fmt.dec(abastRecs.reduce((s,r)=>s+(r.litros||0),0),2)+' L' : '—'}</td>
-                      <td>{abastRecs.reduce((s,r)=>s+(r.valor_abast||0),0) > 0 ? fmt.brl(abastRecs.reduce((s,r)=>s+(r.valor_abast||0),0)) : '—'}</td>
-                      <td colSpan={3}></td>
-                    </tr>
+                    {(() => {
+                      const subL = abastRecs.reduce((s,r)=>s+(r.litros||0),0);
+                      const subR = abastRecs.reduce((s,r)=>s+(r.valor_abast||0),0);
+                      const subKml = subL > 0 ? totalKm / subL : null;
+                      return (
+                        <tr className="total-row">
+                          <td colSpan={4}>SUBTOTAL {vtr}</td>
+                          <td style={{fontWeight:700}}>{fmt.num(totalKm)} km</td>
+                          <td>{abastRecs.length}x</td>
+                          <td>{subL > 0 ? fmt.dec(subL,2)+' L' : '—'}</td>
+                          <td>{subR > 0 ? fmt.brl(subR) : '—'}</td>
+                          <td className={kmlClass(subKml)} style={{fontWeight:700}}>
+                            {subKml ? fmt.dec(subKml,2)+' km/L' : '—'}
+                          </td>
+                          <td colSpan={2}></td>
+                        </tr>
+                      );
+                    })()}
                   </tbody>
                 </table>
                 </div>
